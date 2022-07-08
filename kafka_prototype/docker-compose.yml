@@ -1,0 +1,125 @@
+version: '3.4'
+
+services:
+
+  db:
+    image: postgres:11
+    ports:
+      - "5430:5432"
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=listener
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+
+
+  listener:
+    build:
+      context: ../
+      dockerfile: kafka_prototype/Dockerfile
+      target: dev
+    environment:
+      - PYTHONHASHSEED=0
+      - KAFKA_USERNAME=some_username
+      - KAFKA_PASSWORD=some_password
+      - YENV_TYPE=test
+      - KAFKA_BROKERS=kafka:9092
+      - KAFKA_TOPIC=topic
+
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_HOST=db
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=listener
+
+    volumes:
+      - ../listener:/app
+#        alembic upgrade head &&
+    command: >
+      /bin/bash -c '
+        python -m runner
+      '
+    depends_on:
+      - db
+      - kafka
+#    deploy:
+#      mode: replicated
+#      replicas: 5
+
+
+  kafka:
+    image: confluentinc/cp-kafka
+    platform: linux/amd64
+    restart: always
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: SASL_PLAINTEXT://:9092, INTERNAL://localhost:29092
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://:9092, INTERNAL://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:PLAINTEXT, INTERNAL:PLAINTEXT
+      KAFKA_ZOOKEEPER_SET_ACL: "true"
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL: PLAIN
+      # KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.auth.SimpleAclAuthorizer
+      KAFKA_AUTHORIZER_CLASS_NAME: kafka.security.authorizer.AclAuthorizer
+      KAFKA_SUPER_USERS: User:admin;User:alice
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      LOG4J_LOG4J_LOGGER_KAFKA_AUTHORIZER_LOGGER: TRACE
+      LOG4J_LOGGER_KAFKA_AUTHORIZER_LOGGER: TRACE
+      KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "true" # allow.everyone.if.no.acl.found
+
+    volumes:
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+      - ./kafka-logs:/log/kafka
+#      - ./kafka-data:/var/lib/kafka/data
+#    deploy:
+#      mode: replicated
+#      replicas: 3
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper
+    platform: linux/amd64
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_MAXCLIENTCNXNS: 0
+      ZOOKEEPER_AUTHPROVIDER.1: org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+      ZOOKEEPER_REQUIRECLIENTAUTHSCHEME: sasl
+      ZOOKEEPER_JAASLOGINRENEW: 3600000
+      ZOOKEEPER_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf"
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/kafka_server_jaas.conf -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider"
+    ports:
+      - "2181:2181"
+      - "28080:8080"
+    volumes:
+      - ./kafka_server_jaas.conf:/etc/kafka/kafka_server_jaas.conf
+
+#  kafka_mon:
+#    image: jpodeszwik/kafka-offset-monitor:0.2.1
+#    platform: linux/amd64
+#    ports:
+#      - "8081:8081"
+#    environment:
+#      ZK: zookeeper
+#      REFRESH: 30.seconds
+#    depends_on:
+#      - kafka
+#      - zookeeper
+#    command: >
+#      java -cp /KafkaOffsetMonitor-assembly-*.jar com.quantifind.kafka.offsetapp.OffsetGetterWeb --port 8080 --zk $ZK --refresh $REFRESH --retain $RETAIN

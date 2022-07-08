@@ -1,0 +1,12 @@
+ujson==4.0.2
+msgpack==1.0.2
+aiokafka==0.7.1
+sqlalchemy-utils==0.38.2
+sqlalchemy[asyncio]==1.4.29
+asyncpg==0.25.0
+alembic==1.7.5
+psycopg2-binary==2.9.3
+pydantic==1.9.1
+pytz==2021.1
+beautifulsoup4==4.11.1
+lxml==4.9.1
